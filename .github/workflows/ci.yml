@@ -1,3 +1,5 @@
+      - name: Build Docker image
+        run: docker build -t fieldscript-api .
 name: CI
 
 on:

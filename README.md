@@ -1,3 +1,32 @@
+# Docker
+
+Build the image:
+```sh
+docker build -t fieldscript-api .
+```
+
+Run (default 8000):
+```sh
+docker run --rm -p 8000:8000 fieldscript-api
+```
+
+Run with PORT override (example 8080):
+```sh
+docker run --rm -e PORT=8080 -p 8080:8080 fieldscript-api
+```
+
+Compose:
+```sh
+docker compose up --build
+```
+
+Health check:
+```sh
+curl http://localhost:8000/health
+```
+
+Swagger UI:
+http://localhost:8000/docs
 # Run the API locally
 
 1. Copy .env.example to .env and adjust as needed.
