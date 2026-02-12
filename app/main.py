@@ -1,3 +1,7 @@
+from fastapi import BackgroundTasks
+from uuid import uuid4
+from app.schemas.job import OCRJob
+from app.services.job_store import JOBS
 #
 # Payload limits are enforced INSIDE this route (route-local guard) to guarantee the 413 contract regardless of middleware stack or exception handler behavior.
 # Limits are based on DECODED bytes (not base64 string length): 10MB per image, 20MB total.
@@ -166,13 +170,23 @@ def version():
 
 
 
-@app.post("/v1/projects/{project_id}/ocr", response_model=OCRResponse)
-async def ocr(project_id: str, request: Request, body: OCRRequest):
+
+@app.post("/v1/projects/{project_id}/ocr")
+async def ocr(
+    project_id: str,
+    request: Request,
+    body: OCRRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Accepts OCR requests, enqueues background processing, and returns a job_id for async polling.
+    Uses FastAPI BackgroundTasks to avoid blocking the request thread.
+    """
     enforce_project_scope(request, project_id)
     PER_IMAGE_CAP = 10 * 1024 * 1024
     TOTAL_CAP = 20 * 1024 * 1024
     request_id = getattr(request.state, "request_id", "unknown")
-    images = body.images if hasattr(body, "images") else []
+    images = body.images
     total_bytes = 0
     for img in images:
         size_i = b64_decoded_size(img)
@@ -195,11 +209,76 @@ async def ocr(project_id: str, request: Request, body: OCRRequest):
         resp = JSONResponse(status_code=413, content=body_)
         resp.headers["x-request-id"] = request_id
         return resp
-    # Success path
-    service = OCRService()
-    response, cache_hit = await service.process(body, request_id)
-    request.state.cache_hit = cache_hit
-    resp = JSONResponse(content=response.model_dump())
+
+    job_id = str(uuid4())
+    job = OCRJob(
+        job_id=job_id,
+        project_id=project_id,
+        status="pending",
+        result=None,
+        error=None,
+        request_id=request_id
+    )
+    JOBS[job_id] = job
+
+    async def process_ocr_job(job_id: str, body: OCRRequest, request_id: str):
+        job = JOBS.get(job_id)
+        if not job:
+            return
+        job.status = "processing"
+        try:
+            service = OCRService()
+            response, _cache_hit = await service.process(body, request_id)
+            job.status = "completed"
+            job.result = response
+        except Exception as e:
+            job.status = "failed"
+            job.error = str(e)
+            logger.exception(f"OCR job {job_id} failed")
+            # Do not re-raise; log and mark as failed
+
+    background_tasks.add_task(process_ocr_job, job_id, body, request_id)
+
+    resp = JSONResponse(
+        status_code=202,
+        content={
+            "job_id": job_id,
+            "status": "pending",
+            "request_id": request_id
+        }
+    )
+    resp.headers["x-request-id"] = request_id
+    return resp
+# ...existing code...
+
+# GET /v1/projects/{project_id}/jobs/{job_id}
+@app.get("/v1/projects/{project_id}/jobs/{job_id}")
+async def get_ocr_job(project_id: str, job_id: str, request: Request):
+    """
+    Returns the status/result of an OCR job. Enforces project scope and error contract.
+    """
+    enforce_project_scope(request, project_id)
+    request_id = getattr(request.state, "request_id", "unknown")
+    job = JOBS.get(job_id)
+    if not job or job.project_id != project_id:
+        body = {
+            "error_code": "NOT_FOUND",
+            "message": "Job not found",
+            "request_id": request_id
+        }
+        resp = JSONResponse(status_code=404, content=body)
+        resp.headers["x-request-id"] = request_id
+        return resp
+    result = {
+        "job_id": job.job_id,
+        "status": job.status,
+        "request_id": job.request_id
+    }
+    if job.status == "completed" and job.result:
+        result["result"] = job.result.model_dump()
+    if job.status == "failed" and job.error:
+        result["error"] = job.error
+    resp = JSONResponse(content=result)
     resp.headers["x-request-id"] = request_id
     return resp
 
