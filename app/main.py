@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from app.errors import PayloadTooLargeError
-from app.middleware import RequestIDMiddleware
+from app.middleware.request_id import RequestIDMiddleware
 from app.logging_setup import setup_logging
 from app.schemas.common import ErrorResponse
 from app.schemas.ocr import OCRRequest, OCRResponse
@@ -95,11 +95,14 @@ async def lifespan(app):
     }))
 
 
-# Register the dry-run endpoint after app = FastAPI(...)
 
 
 # Instantiate FastAPI app
 app = FastAPI(lifespan=lifespan)
+
+# Register API key management router (required for tests)
+from app.api.routes import api_keys as api_keys_router
+app.include_router(api_keys_router.router)
 
 
 # New middleware order for correct short-circuit header application
@@ -330,6 +333,10 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         ).model_dump()
     )
     resp.headers["x-request-id"] = request_id
+    # Preserve headers from HTTPException (e.g., WWW-Authenticate)
+    if exc.headers:
+        for k, v in exc.headers.items():
+            resp.headers[k] = v
     return resp
 
 

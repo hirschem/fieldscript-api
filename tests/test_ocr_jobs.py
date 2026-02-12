@@ -4,7 +4,12 @@ from app.main import app
 import base64
 import time
 
-client = TestClient(app)
+
+import pytest
+
+@pytest.fixture
+def client(override_api_key_store):
+    return TestClient(app)
 
 # Helper to create a fake base64 image of N bytes decoded
 
@@ -16,7 +21,7 @@ OCR_URL = f"/v1/projects/{PROJECT_ID}/ocr"
 
 # 1️⃣ POST returns 202 + job_id
 
-def test_post_ocr_returns_202_and_job_id():
+def test_post_ocr_returns_202_and_job_id(client):
     image = _fake_b64_str(1024)  # 1KB
     resp = client.post(
         OCR_URL,
@@ -32,7 +37,7 @@ def test_post_ocr_returns_202_and_job_id():
 
 # 2️⃣ GET returns job status transitions
 
-def test_get_job_status_transitions():
+def test_get_job_status_transitions(client):
     image = _fake_b64_str(1024)
     post_resp = client.post(
         OCR_URL,
@@ -71,7 +76,7 @@ def test_get_job_status_transitions():
 
 # 3️⃣ 413 payload guard still works
 
-def test_post_ocr_payload_too_large_returns_413():
+def test_post_ocr_payload_too_large_returns_413(client):
     # One image of 10MB + 1 byte triggers per-image cap
     image = _fake_b64_str(10 * 1024 * 1024 + 1)
     resp = client.post(
@@ -87,7 +92,7 @@ def test_post_ocr_payload_too_large_returns_413():
 
 # 4️⃣ 404 for wrong project_id
 
-def test_get_job_wrong_project_id_returns_404():
+def test_get_job_wrong_project_id_returns_404(client):
     image = _fake_b64_str(1024)
     post_resp = client.post(
         OCR_URL,
