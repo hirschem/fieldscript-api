@@ -1,3 +1,20 @@
+# Run the API locally
+
+1. Copy .env.example to .env and adjust as needed.
+2. Install dependencies:
+	```powershell
+	pip install -r requirements.txt
+	pip install -r requirements-dev.txt
+	```
+3. Start the API:
+	```powershell
+	scripts\run.ps1
+	```
+	(Set $env:PORT to override port if needed)
+
+Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
+Health check: [http://localhost:8000/health](http://localhost:8000/health)
+
 
 # Fieldscript API
 
@@ -172,3 +189,22 @@ CORS is enabled for http://localhost:3000
 JSON logging is configured.
 Request ID middleware is active.
 Standard error schema is used.
+
+# Development
+
+Install dev requirements:
+```powershell
+pip install -r requirements-dev.txt
+```
+
+Run tests:
+```powershell
+scripts\test.ps1
+```
+
+Run lint/format checks:
+```powershell
+scripts\lint.ps1
+```
+
+All code is formatted with black (line length 100) and checked with ruff.

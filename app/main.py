@@ -154,9 +154,10 @@ async def ocr_dry_run(project_id: str, request: Request, body: OCRRequest):
     resp.headers["x-request-id"] = request_id
     return resp
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+
+# Mount health router
+from app.health import router as health_router
+app.include_router(health_router)
 
 @app.get("/version")
 def version():
