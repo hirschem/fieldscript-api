@@ -1,18 +1,31 @@
 
+
+import os
+import sys
+import tempfile
+import subprocess
 import pytest
 from app.security.api_keys import generate_api_key, store_api_key, PROJECT_API_KEYS
 from app.deps.stores import get_api_key_store
 from app.main import app as fastapi_app
-import sys
-print("[DEBUG] fastapi_app type:", type(fastapi_app))
-print("[DEBUG] has dependency_overrides:", hasattr(fastapi_app, "dependency_overrides"))
-mod = sys.modules.get("app")
-print("[DEBUG] sys.modules['app']:", mod, "type:", type(mod))
-if mod and hasattr(mod, "__file__"):
-    print("[DEBUG] sys.modules['app'].__file__:", mod.__file__)
-assert hasattr(fastapi_app, "dependency_overrides"), "app.main.app is not the FastAPI instance"
 
-# In-memory API key store for tests
+# --- DB setup: use temp sqlite file and run migrations ---
+@pytest.fixture(scope="session", autouse=True)
+def _setup_test_db():
+    tmpdir = tempfile.TemporaryDirectory()
+    db_path = os.path.join(tmpdir.name, "test.db")
+    db_url = f"sqlite:///{db_path}"
+    os.environ["DATABASE_URL"] = db_url
+    # Run migrations
+    migrate_py = os.path.join(os.path.dirname(__file__), "..", "scripts", "migrate.py")
+    ret = subprocess.call([sys.executable, migrate_py])
+    if ret != 0:
+        raise RuntimeError("Failed to run migrations for test DB!")
+    yield
+    tmpdir.cleanup()
+
+
+# In-memory API key store for tests (logic unchanged)
 class InMemoryApiKeyStore:
     def create(self, project_id, name=None):
         raw_key = generate_api_key()

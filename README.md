@@ -200,40 +200,27 @@ The project separates:
 - Utilities
 - Middleware
 - Contract tests
-# FastAPI backend run instructions
 
-## Install dependencies
-pip install -r requirements.txt
+---
 
-## Run the server
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+## Database & Migrations
 
-## Endpoints:
-- GET /health
-- GET /version
-- POST /v1/projects/{project_id}/ocr
-- POST /v1/projects/{project_id}/export
+This project uses Alembic for database migrations. All tables (including `project_api_keys`) are created via migrations.
 
-CORS is enabled for http://localhost:3000
-JSON logging is configured.
-Request ID middleware is active.
-Standard error schema is used.
+- **Local development:**
+  - The default database is SQLite (see `DATABASE_URL` in `.env.example`).
+  - To apply migrations:
+    ```sh
+    python scripts/migrate.py
+    ```
+  - This will create/update the schema in the database specified by `DATABASE_URL`.
 
-# Development
+- **Docker/Railway:**
+  - The Docker image runs migrations automatically on container startup (see `Dockerfile`).
+  - For Railway or other platforms, ensure migrations are run before starting the server (the Docker CMD does this by default).
 
-Install dev requirements:
-```powershell
-pip install -r requirements-dev.txt
-```
+## Running Tests (DB setup)
 
-Run tests:
-```powershell
-scripts\test.ps1
-```
-
-Run lint/format checks:
-```powershell
-scripts\lint.ps1
-```
-
-All code is formatted with black (line length 100) and checked with ruff.
+- Tests use a fresh temporary SQLite database for each test session.
+- Migrations are applied automatically before tests run (see `tests/conftest.py`).
+- No manual DB setup is required for tests or CI.
