@@ -39,101 +39,8 @@ from app.usage import get_usage_events
 from app import config
 from app.utils.project_scope import enforce_project_scope
 from app.utils.base64_size import estimate_base64_decoded_bytes as _estimate_base64_decoded_bytes
-
-def safe_estimate_base64_decoded_bytes(val):
-    try:
-        if not isinstance(val, str):
-            raise ValueError("Image is not a string")
-        return _estimate_base64_decoded_bytes(val)
-    except Exception:
-        raise ValueError("Failed to estimate base64 decoded bytes")
-
-logger = logging.getLogger("payload_guard")
-
 from contextlib import asynccontextmanager
 
-SERVICE_NAME = "fieldscript-api"
-SERVICE_VERSION = "1.0.0"
-PROMPT_VERSION = "ocr_v1_2026-02-11"
-EXPORT_VERSION = "export_v1"
-TEMPLATE_VERSION = "template_v1"
-
-setup_logging()
-
-@asynccontextmanager
-async def lifespan(app):
-    # Startup
-    startup_log = {
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "level": "INFO",
-        "event": "startup",
-        "service_name": SERVICE_NAME,
-        "service_version": SERVICE_VERSION,
-        "env": config.ENV
-    }
-    # DEV-only extra info
-    if config.is_dev:
-        startup_log.update({
-            "python_executable": sys.executable,
-            "dev_flag": True,
-            "version": SERVICE_VERSION
-        })
-    print(json.dumps(startup_log))
-    yield
-    # Shutdown
-    print(json.dumps({
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "level": "INFO",
-        "event": "shutdown",
-        "service_name": SERVICE_NAME,
-        "service_version": SERVICE_VERSION,
-        "env": config.ENV
-    }))
-
-app = FastAPI(lifespan=lifespan)
-
-
-# Register exception handler for PayloadTooLargeError using add_exception_handler
-async def payload_too_large_handler(request: Request, exc: PayloadTooLargeError):
-    request_id = getattr(request.state, "request_id", "unknown")
-    body = {
-        "error_code": "PAYLOAD_TOO_LARGE",
-        "message": "Total image payload exceeds allowed size",
-        "request_id": request_id,
-    }
-    resp = JSONResponse(status_code=413, content=body)
-    resp.headers["x-request-id"] = request_id
-    return resp
-
-app.add_exception_handler(PayloadTooLargeError, payload_too_large_handler)
-
-from app.errors import PayloadTooLargeError
-
-import sys
-
-import uvicorn
-from fastapi import FastAPI, Request, status, HTTPException, APIRouter
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
-from app.middleware import RequestIDMiddleware
-from app.logging_setup import setup_logging
-import logging
-logger = logging.getLogger("payload_guard")
-from app.schemas.common import ErrorResponse
-from app.schemas.ocr import OCRRequest, OCRResponse
-from app.services.ocr_service import OCRService
-from app.schemas.export import ExportRequest, ExportResponse
-from app.request_logging import RequestLoggingMiddleware
-from app.context_middleware import ContextMiddleware
-from app.rate_limit_middleware import RateLimitMiddleware
-from app.security_headers_middleware import SecurityHeadersMiddleware
-from app.usage import get_usage_events
-from app import config
-import time
-import json
-from app.utils.project_scope import enforce_project_scope
-from app.utils.base64_size import estimate_base64_decoded_bytes as _estimate_base64_decoded_bytes
 def safe_estimate_base64_decoded_bytes(val):
     try:
         if not isinstance(val, str):
@@ -141,7 +48,8 @@ def safe_estimate_base64_decoded_bytes(val):
         return _estimate_base64_decoded_bytes(val)
     except Exception:
         raise ValueError("Failed to estimate base64 decoded bytes")
-from app import config
+
+logger = logging.getLogger("payload_guard")
 
 # Version constants
 SERVICE_NAME = "fieldscript-api"
@@ -150,15 +58,11 @@ PROMPT_VERSION = "ocr_v1_2026-02-11"
 EXPORT_VERSION = "export_v1"
 TEMPLATE_VERSION = "template_v1"
 
-
 setup_logging()
-
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app):
     # Startup
-    import sys
     startup_log = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "level": "INFO",
@@ -174,10 +78,8 @@ async def lifespan(app):
             "dev_flag": True,
             "version": SERVICE_VERSION
         })
-
     print(json.dumps(startup_log))
     yield
-
     # Shutdown
     print(json.dumps({
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -188,11 +90,12 @@ async def lifespan(app):
         "env": config.ENV
     }))
 
-app = FastAPI(lifespan=lifespan)
 
-# Print sys.executable and handler install at startup (to stderr) at top level
-print(f"sys.executable={sys.executable}", file=sys.stderr)
-print("unhandled_exception_handler installed", file=sys.stderr)
+# Register the dry-run endpoint after app = FastAPI(...)
+
+
+# Instantiate FastAPI app
+app = FastAPI(lifespan=lifespan)
 
 
 # New middleware order for correct short-circuit header application
@@ -211,7 +114,6 @@ app.add_middleware(RequestIDMiddleware)
 
 
 # Register the dry-run endpoint after app = FastAPI(...)
-
 @app.post("/v1/projects/{project_id}/ocr/dry-run")
 async def ocr_dry_run(project_id: str, request: Request, body: OCRRequest):
     # Project scoping enforcement
@@ -235,7 +137,6 @@ async def ocr_dry_run(project_id: str, request: Request, body: OCRRequest):
         request_id = getattr(request.state, "request_id", "unknown")
         resp.headers["x-request-id"] = request_id
         return resp
-    from app.services.ocr_service import OCRService
     service = OCRService()
     request_id = getattr(request.state, "request_id", "unknown")
     req_hash = service.compute_request_hash(body)
@@ -248,79 +149,6 @@ async def ocr_dry_run(project_id: str, request: Request, body: OCRRequest):
     })
     resp.headers["x-request-id"] = request_id
     return resp
-
-
-import uvicorn
-from fastapi import FastAPI, Request, status, HTTPException, APIRouter
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
-from app.middleware import RequestIDMiddleware
-from app.logging_setup import setup_logging
-from app.schemas.common import ErrorResponse
-from app.schemas.ocr import OCRRequest, OCRResponse
-from app.services.ocr_service import OCRService
-from app.schemas.export import ExportRequest, ExportResponse
-from app.request_logging import RequestLoggingMiddleware
-from app.context_middleware import ContextMiddleware
-from app.rate_limit_middleware import RateLimitMiddleware
-from app.security_headers_middleware import SecurityHeadersMiddleware
-from app.usage import get_usage_events
-from app import config
-import time
-import json
-from app.utils.project_scope import enforce_project_scope
-
-# Version constants
-SERVICE_NAME = "fieldscript-api"
-SERVICE_VERSION = "1.0.0"
-PROMPT_VERSION = "ocr_v1_2026-02-11"
-EXPORT_VERSION = "export_v1"
-TEMPLATE_VERSION = "template_v1"
-
-
-setup_logging()
-
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app):
-    # Startup
-    print(json.dumps({
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "level": "INFO",
-        "event": "startup",
-        "service_name": SERVICE_NAME,
-        "service_version": SERVICE_VERSION,
-        "env": config.ENV
-    }))
-    yield
-    # Shutdown
-    print(json.dumps({
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "level": "INFO",
-        "event": "shutdown",
-        "service_name": SERVICE_NAME,
-        "service_version": SERVICE_VERSION,
-        "env": config.ENV
-    }))
-
-app = FastAPI(lifespan=lifespan)
-
-
-# New middleware order for correct short-circuit header application
-app.add_middleware(RateLimitMiddleware)
-app.add_middleware(RequestLoggingMiddleware)
-app.add_middleware(ContextMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=config.allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"]
-)
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(RequestIDMiddleware)
 
 @app.get("/health")
 def health():
@@ -386,9 +214,6 @@ def export(project_id: str, request: Request, body: ExportRequest):
     return resp
 
 # Exception handlers
-
-# Exception handlers
-
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
